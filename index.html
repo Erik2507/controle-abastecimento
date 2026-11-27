@@ -36,7 +36,7 @@
   <div class="grid"><div class="metric"><small>GLP na data selecionada</small><strong id="totalToday">0 kg</strong></div><div class="metric"><small>Abastecimentos na data</small><strong id="countToday">0</strong></div><div class="metric"><small>Relatórios aguardando conferência</small><strong id="pendingCount">0</strong></div><div class="metric"><small>Outros abastecimentos</small><strong id="otherTotal">0 kg</strong></div></div>
   <div class="card"><div class="row"><div><h2>Cadastro de máquinas</h2><p class="hint">Cadastre o número da máquina e informe se pertence à operação ou a outros locais.</p></div><span class="badge info">Protótipo</span></div><form id="machineCatalogForm" class="grid"><div class="field"><label for="machineNumber">Número da máquina *</label><input id="machineNumber" maxlength="40" placeholder="Ex.: 1025" required></div><div class="field"><label for="machineOrigin">Origem da máquina *</label><select id="machineOrigin" required><option value="Operação">Operação</option><option value="Outros locais">Outros locais</option></select></div><div class="actions"><button class="primary" type="submit">Cadastrar máquina</button></div><p id="machineCatalogMsg" class="hint"></p></form><div id="machineCatalogRows"></div><p class="notice">Atenção: neste protótipo, o cadastro fica salvo somente neste navegador (armazenamento local). Não é compartilhado entre dispositivos ou usuários e ainda não está integrado a uma tabela corporativa.</p></div>
   <div class="card"><div class="row"><div><h2>Relatórios recebidos</h2><p class="hint">Abra um relatório para consultar os registros. Selecione os abastecimentos que deseja excluir.</p></div><div class="actions"><button type="button" id="loadDemoData">Carregar dados fictícios</button><button type="button" id="backRealData" class="hidden">Voltar aos dados reais</button><button type="button" id="refreshAnalyst">↻ Atualizar painel</button></div></div><div id="demoNotice" class="notice hidden">Você está visualizando dados fictícios de teste. Eles existem somente nesta sessão do navegador: não são gravados no Supabase, não alteram os relatórios reais e desaparecem ao sair ou recarregar a página.</div><div class="grid"><div class="field"><label for="reportDateFilter">Consultar relatório do dia</label><input type="date" id="reportDateFilter"></div></div><p id="reportFilterSummary" class="hint"></p><div id="reports"></div></div>
-  <div class="card"><div><h2>Indicadores visuais</h2><p class="hint">Comparação de consumo, intervalos de trabalho e eficiência operacional.</p></div><div id="analystCharts" class="chartgrid"></div></div><div class="card"><div><h2>Análise por máquina</h2><p class="hint">Intervalo calculado pela diferença entre leituras consecutivas do horímetro da mesma máquina.</p></div><div id="machineAnalysis"></div></div>
+  <div class="card"><div><h2>Indicadores visuais</h2><p class="hint">Comparação de consumo, intervalos de trabalho e eficiência operacional.</p></div><div id="analystCharts" class="chartgrid"></div></div><div class="card"><div class="row"><div><h2>Alertas e inconsistências por máquina</h2><p class="hint">Sinalizações automáticas para conferência do analista. Não bloqueiam abastecimentos.</p></div><span id="machineAlertCount" class="badge warn">0 alertas</span></div><div id="machineAlerts"></div><p class="hint">O status dos alertas fica salvo somente neste navegador no protótipo. Na versão corporativa, deverá ser gravado no banco compartilhado com histórico de responsável, data e justificativa.</p></div><div class="card"><div><h2>Análise por máquina</h2><p class="hint">Intervalo calculado pela diferença entre leituras consecutivas do horímetro da mesma máquina.</p></div><div id="machineAnalysis"></div></div>
  </div>
 </div>
 <p class="foot">Demonstração local · dados fictícios · validação sequencial de horários · não utilizar com informações reais da empresa.</p>
@@ -114,11 +114,8 @@ function calculateMachineIntervals(rows){
     items.forEach(x=>{
       const reading=Math.trunc(Number(x.hor));
       if(previous && Number.isFinite(reading) && Number.isFinite(Number(previous.hor))){
-        const hours=reading-Number(previous.hor);
-        if(hours>=0){
-          const origin=x.kind==='frota'?'Operação':'Outros locais';
-          result.push({machine,origin,date:x.date||x.dateISO||'',dateISO:x.dateISO||'',previousHor:Math.trunc(Number(previous.hor)),currentHor:reading,hours,kg:Number(x.kg||0),kgPerHour:hours>0?Number(x.kg||0)/hours:null});
-        }
+        const hours=reading-Number(previous.hor),origin=x.kind==='frota'?'Operação':'Outros locais';
+        result.push({machine,origin,date:x.date||x.dateISO||'',dateISO:x.dateISO||'',time:x.time||'',previousHor:Math.trunc(Number(previous.hor)),currentHor:reading,hours,kg:Number(x.kg||0),kgPerHour:hours>0?Number(x.kg||0)/hours:null});
       }
       if(Number.isFinite(reading)) previous=x;
     });
@@ -145,6 +142,38 @@ function renderRealCharts(rows,intervals){
     analystChartInstances.push(new Chart(intervalEl,{type:'bar',data:{labels:valid.map(x=>x.machine),datasets:[{label:'Horas entre abastecimentos',data:valid.map(x=>x.hours),backgroundColor:'#e3a94b',borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+num(ctx.parsed.x)+' h'}}},scales:{x:{beginAtZero:true,ticks:{color:'#98a89e',callback:v=>v+' h'},grid:{color:'rgba(152,168,158,.12)'}},y:{ticks:{color:'#cbd8d0'},grid:{display:false}}}}}));
   } else intervalParent.innerHTML='<div class="charttitle">Horas entre abastecimentos</div><div class="chartempty">Ainda não há duas leituras válidas da mesma máquina no histórico consultado.</div>';
 }
+const MACHINE_ALERT_STATUS_KEY='glp_machine_alert_status_v1';
+function readMachineAlertStatuses(){try{return JSON.parse(localStorage.getItem(MACHINE_ALERT_STATUS_KEY)||'{}')||{}}catch(e){return {}}}
+function machineAlertKey(a){return [a.type,a.machine,a.dateISO,a.time,a.previousHor,a.currentHor].join('|')}
+function renderMachineAlerts(intervals){
+  const el=$('machineAlerts'),countEl=$('machineAlertCount');if(!el)return;
+  const alerts=[];
+  intervals.forEach(x=>{
+    if(x.currentHor<0)alerts.push({...x,type:'horimetro_negativo',title:'Leitura de horímetro inválida',detail:'O horímetro atual está negativo.'});
+    if(x.hours<0)alerts.push({...x,type:'horimetro_regressivo',title:'Horímetro menor que a leitura anterior',detail:'A leitura atual está '+num(Math.abs(x.hours))+' h abaixo da anterior. Conferir possível erro de digitação ou equipamento.'});
+    else if(x.hours===0)alerts.push({...x,type:'horimetro_sem_avanco',title:'Horímetro sem avanço',detail:'A leitura atual é igual à anterior. Conferir o registro e a condição da máquina.'});
+    else if(x.hours<1)alerts.push({...x,type:'pouco_tempo',title:'Abastecimento com pouco tempo rodado',detail:'Intervalo de '+num(x.hours)+' h desde a leitura anterior. Referência mínima de análise: 1 h.'});
+    if(x.hours>(x.origin==='Operação'?3:5))alerts.push({...x,type:'muito_tempo',title:'Intervalo acima da referência',detail:'Intervalo de '+num(x.hours)+' h. Referência: até '+(x.origin==='Operação'?'3':'5')+' h para esta origem.'});
+  });
+  const shortByMachine={};intervals.filter(x=>x.hours>0&&x.hours<1).forEach(x=>{shortByMachine[x.machine]=(shortByMachine[x.machine]||0)+1});
+  Object.entries(shortByMachine).filter(([,n])=>n>=2).forEach(([machine])=>{
+    const latest=intervals.filter(x=>x.machine===machine&&x.hours>0&&x.hours<1).slice(-1)[0];
+    alerts.push({...latest,type:'recorrencia_curta',title:'Abastecimentos recorrentes em intervalos curtos',detail:'Foram identificados '+shortByMachine[machine]+' intervalos abaixo de 1 h para esta máquina na data consultada.'});
+  });
+  const unique=[...new Map(alerts.map(a=>[machineAlertKey(a),a])).values()],statuses=readMachineAlertStatuses();
+  countEl.textContent=unique.length+' alerta(s)';countEl.className='badge '+(unique.length?'warn':'');
+  if(!unique.length){el.innerHTML='<p class="success">Nenhum alerta identificado para a data selecionada com os dados disponíveis.</p>';return}
+  const order={horimetro_negativo:0,horimetro_regressivo:1,horimetro_sem_avanco:2,recorrencia_curta:3,pouco_tempo:4,muito_tempo:5};
+  unique.sort((a,b)=>(order[a.type]??9)-(order[b.type]??9)||String(a.machine).localeCompare(String(b.machine),'pt-BR'));
+  el.innerHTML=unique.map(a=>{
+    const key=machineAlertKey(a),status=statuses[key]||'Pendente',critical=a.type.startsWith('horimetro_');
+    return '<div class="chartbox" style="margin-bottom:10px"><div class="row"><div><b>'+escapeHtml(a.machine)+'</b><p class="hint">'+escapeHtml(a.origin)+' · '+escapeHtml(a.date)+' '+escapeHtml(a.time||'')+'</p></div><span class="badge '+(critical?'warn':'info')+'">'+escapeHtml(a.title)+'</span></div><p class="hint">'+escapeHtml(a.detail)+'</p><div class="grid"><div class="field"><label>Status da análise</label><select data-alert-status="'+escapeHtml(key)+'"><option'+(status==='Pendente'?' selected':'')+'>Pendente</option><option'+(status==='Em verificação'?' selected':'')+'>Em verificação</option><option'+(status==='Justificado'?' selected':'')+'>Justificado</option><option'+(status==='Inconsistência confirmada'?' selected':'')+'>Inconsistência confirmada</option></select></div><div class="field"><label>Leituras de horímetro</label><input disabled value="Anterior: '+escapeHtml(a.previousHor)+' · Atual: '+escapeHtml(a.currentHor)+'"></div></div></div>';
+  }).join('');
+}
+document.addEventListener('change',e=>{
+  const select=e.target.closest('[data-alert-status]');if(!select)return;
+  const statuses=readMachineAlertStatuses();statuses[select.dataset.alertStatus]=select.value;localStorage.setItem(MACHINE_ALERT_STATUS_KEY,JSON.stringify(statuses));
+});
 function renderMachineAnalysis(intervals){
   const el=$('machineAnalysis');
   if(!intervals.length){el.innerHTML='<p class="hint">Sem dados suficientes. São necessárias pelo menos duas leituras de horímetro da mesma máquina.</p>';return}
@@ -262,7 +291,7 @@ function renderAn(){
   let allMachineRows=allReports.flatMap(rep=>rep.rows.map(x=>({...x,date:rep.date,dateISO:rep.dateISO})));
   let intervals=calculateMachineIntervals(allMachineRows);
   let visibleIntervals=intervals.filter(x=>x.dateISO===reportDateFilter);
-  renderMachineAnalysis(visibleIntervals);renderRealCharts(chartRows,visibleIntervals);
+  renderMachineAlerts(visibleIntervals);renderMachineAnalysis(visibleIntervals);renderRealCharts(chartRows,visibleIntervals);
 }
 $('loginForm').addEventListener('submit',e=>{e.preventDefault();login($('matricula').value.trim(),$('senha').value)});$('logout').addEventListener('click',showLogin);$('loadDemoData').addEventListener('click',activateDemoData);$('backRealData').addEventListener('click',restoreRealData);$('reportDateFilter').addEventListener('change',e=>{reportDateFilter=e.target.value||todayISO();openReport=null;renderAn()});$('refreshAnalyst').addEventListener('click',async()=>{if(isDemoMode){await restoreRealData();return}try{await refreshData();renderAn();alert('Painel atualizado com os dados do Supabase.')}catch(e){alert('Erro ao atualizar: '+e.message)}});
 setInterval(()=>{if(user&&user.role==='ab')renderAb().catch(err=>console.error(err))},15000);
