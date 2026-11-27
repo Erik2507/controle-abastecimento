@@ -116,7 +116,8 @@ function calculateMachineIntervals(rows){
       if(previous && Number.isFinite(reading) && Number.isFinite(Number(previous.hor))){
         const hours=reading-Number(previous.hor);
         if(hours>=0){
-          result.push({machine,date:x.date||x.dateISO||'',dateISO:x.dateISO||'',previousHor:Math.trunc(Number(previous.hor)),currentHor:reading,hours,kg:Number(x.kg||0),kgPerHour:hours>0?Number(x.kg||0)/hours:null});
+          const origin=x.kind==='frota'?'Operação':'Outros locais';
+          result.push({machine,origin,date:x.date||x.dateISO||'',dateISO:x.dateISO||'',previousHor:Math.trunc(Number(previous.hor)),currentHor:reading,hours,kg:Number(x.kg||0),kgPerHour:hours>0?Number(x.kg||0)/hours:null});
         }
       }
       if(Number.isFinite(reading)) previous=x;
@@ -149,9 +150,21 @@ function renderMachineAnalysis(intervals){
   if(!intervals.length){el.innerHTML='<p class="hint">Sem dados suficientes. São necessárias pelo menos duas leituras de horímetro da mesma máquina.</p>';return}
   const byMachine={};intervals.forEach(x=>(byMachine[x.machine]??=[]).push(x));
   const summary=Object.entries(byMachine).map(([machine,items])=>({machine,count:items.length,avg:items.reduce((a,x)=>a+x.hours,0)/items.length}));
-  const buckets=[{label:'Até 1 hora',test:h=>h<=1},{label:'Acima de 1 até 2 horas',test:h=>h>1&&h<=2},{label:'Acima de 2 até 3 horas',test:h=>h>2&&h<=3},{label:'Acima de 3 horas',test:h=>h>3}];
-  const bucketHtml=buckets.map(b=>'<tr><td>'+b.label+'</td><td><b>'+intervals.filter(x=>b.test(x.hours)).length+'</b></td></tr>').join('');
-  el.innerHTML='<p class="hint">Classificação dos intervalos observados</p><div class="tablewrap"><table><thead><tr><th>Faixa de intervalo</th><th>Quantidade</th></tr></thead><tbody>'+bucketHtml+'</tbody></table></div><p class="hint">Referência operacional: 1 a 2 horas é a faixa habitual observada; acima de 3 horas merece verificação. Alertas não confirmam falha.</p>'+'<div class="tablewrap"><table><thead><tr><th>Máquina</th><th>Data</th><th>Horímetro anterior</th><th>Horímetro atual</th><th>Horas trabalhadas</th><th>GLP no abastecimento</th><th>Consumo médio (kg/h)</th></tr></thead><tbody>'+intervals.map(x=>'<tr><td>'+escapeHtml(x.machine)+'</td><td>'+escapeHtml(x.date)+'</td><td>'+num(x.previousHor)+' h</td><td>'+num(x.currentHor)+' h</td><td><b>'+num(x.hours)+' h</b></td><td>'+num(x.kg)+' kg</td><td>'+(x.kgPerHour===null?'—':num(x.kgPerHour)+' kg/h')+'</td></tr>').join('')+'</tbody></table></div><p class="hint">Média de intervalo por máquina: '+summary.map(x=>escapeHtml(x.machine)+': <b>'+num(x.avg)+' h</b>').join(' · ')+'</p><p class="hint">O indicador kg/h é uma estimativa de GLP abastecido dividido pelas horas desde a leitura anterior; não representa medição direta do consumo real durante todo o intervalo.</p>';
+  const classify=x=>{
+    if(x.origin==='Operação'){
+      if(x.hours<1)return {label:'Abaixo da referência (1–3 h)',status:'Atenção'};
+      if(x.hours<=3)return {label:'Dentro da referência (1–3 h)',status:'Dentro da referência'};
+      return {label:'Acima de 3 h',status:'Verificar'};
+    }
+    if(x.hours<=5)return {label:'Até 5 h',status:'Dentro da referência'};
+    return {label:'Acima de 5 h',status:'Verificar'};
+  };
+  const operation=intervals.filter(x=>x.origin==='Operação'),other=intervals.filter(x=>x.origin==='Outros locais');
+  const countStatus=arr=>({ok:arr.filter(x=>classify(x).status==='Dentro da referência').length,review:arr.filter(x=>classify(x).status!=='Dentro da referência').length});
+  const opCount=countStatus(operation),otherCount=countStatus(other);
+  const summaryHtml='<div class="grid"><div class="metric"><small>Operação · referência de 1 a 3 h</small><strong>'+opCount.ok+' / '+operation.length+'</strong><small>'+opCount.review+' intervalo(s) para verificar</small></div><div class="metric"><small>Outros locais · referência até 5 h</small><strong>'+otherCount.ok+' / '+other.length+'</strong><small>'+otherCount.review+' intervalo(s) para verificar</small></div></div>';
+  const rowsHtml=intervals.map(x=>{const c=classify(x);return '<tr><td>'+escapeHtml(x.machine)+'</td><td>'+escapeHtml(x.origin)+'</td><td>'+escapeHtml(x.date)+'</td><td>'+num(x.previousHor)+' h</td><td>'+num(x.currentHor)+' h</td><td><b>'+num(x.hours)+' h</b></td><td>'+escapeHtml(c.label)+'</td><td><span class="badge '+(c.status==='Dentro da referência'?'':'warn')+'">'+c.status+'</span></td><td>'+num(x.kg)+' kg</td><td>'+(x.kgPerHour===null?'—':num(x.kgPerHour)+' kg/h')+'</td></tr>'}).join('');
+  el.innerHTML='<p class="hint">Critérios de referência separados pela origem da máquina</p>'+summaryHtml+'<div class="tablewrap"><table><thead><tr><th>Máquina</th><th>Origem</th><th>Data</th><th>Horímetro anterior</th><th>Horímetro atual</th><th>Horas trabalhadas</th><th>Faixa</th><th>Avaliação</th><th>GLP no abastecimento</th><th>Consumo médio (kg/h)</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div><p class="hint">Operação: intervalo de 1 a 3 h como referência; abaixo de 1 h ou acima de 3 h sinaliza para conferência. Outros locais: até 5 h como referência; acima de 5 h sinaliza para conferência. Esses alertas são apenas indicativos para análise do analista: não bloqueiam abastecimentos e não confirmam falha. Máquinas de outros setores podem ter ciclos diferentes.</p><p class="hint">Média de intervalo por máquina: '+summary.map(x=>escapeHtml(x.machine)+': <b>'+num(x.avg)+' h</b>').join(' · ')+'</p><p class="hint">O indicador kg/h é uma estimativa de GLP abastecido dividido pelas horas desde a leitura anterior; não representa medição direta do consumo real durante todo o intervalo.</p>';
 }
 function buildDemoData(){
   const base=new Date();base.setHours(12,0,0,0);
