@@ -367,13 +367,13 @@ document.addEventListener('click',async e=>{let del=e.target.closest('[data-dele
       {title:'Consumo por turno',col:1,values:byShift},
       {title:'Consumo por operador',col:4,values:byOperator}
     ];
-    const firstGroupRow=18;
+    const firstGroupRow=15;
     groups.slice(0,2).forEach(g=>{put(firstGroupRow,g.col,g.title);put(firstGroupRow+1,g.col,'Categoria');put(firstGroupRow+1,g.col+1,'GLP (kg)');g.values.forEach((v,i)=>{put(firstGroupRow+2+i,g.col,v[0]);put(firstGroupRow+2+i,g.col+1,v[1])})});
-    const secondGroupRow=firstGroupRow+Math.max(4,...groups.slice(0,2).map(g=>g.values.length))+4;
+    const secondGroupRow=firstGroupRow+Math.max(3,...groups.slice(0,2).map(g=>g.values.length))+2;
     groups.slice(2).forEach(g=>{put(secondGroupRow,g.col,g.title);put(secondGroupRow+1,g.col,'Categoria');put(secondGroupRow+1,g.col+1,'GLP (kg)');g.values.forEach((v,i)=>{put(secondGroupRow+2+i,g.col,v[0]);put(secondGroupRow+2+i,g.col+1,v[1])})});
     const daily={};cachedData.reports.filter(x=>x.rows&&x.rows.length).forEach(rep=>{const day=rep.date||rep.dateISO||'Data não informada';daily[day]=(daily[day]||0)+rep.rows.reduce((sum,x)=>sum+Number(x.kg||0),0)});
     const dailyEntries=Object.entries(daily).sort((a,b)=>{const da=a[0].split('/').reverse().join('-'),db=b[0].split('/').reverse().join('-');return da.localeCompare(db)});
-    const dailyStart=secondGroupRow+Math.max(4,...groups.slice(2).map(g=>g.values.length))+4;
+    const dailyStart=secondGroupRow+Math.max(3,...groups.slice(2).map(g=>g.values.length))+2;
     put(dailyStart,1,'Histórico de consumo total de GLP por dia');put(dailyStart+1,1,'Data');put(dailyStart+1,2,'GLP total (kg)');
     dailyEntries.forEach((v,i)=>{put(dailyStart+2+i,1,v[0]);put(dailyStart+2+i,2,v[1])});
     downloadXlsx('Relatorio_GLP_'+r.date.replaceAll('/','-')+'.xlsx',headers,rows,summaryRows);
