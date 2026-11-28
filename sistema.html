@@ -64,7 +64,7 @@ function downloadXlsx(filename, headers, rows, summaryRows) {
   const files={
     '[Content_Types].xml':'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
     '_rels/.rels':'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
-    'xl/workbook.xml':'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Relatório GLP" sheetId="1" r:id="rId1"/><sheet name="Resumo gerencial" sheetId="2" r:id="rId2"/></sheets></workbook>',
+    'xl/workbook.xml':'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Relatório GLP" sheetId="1" r:id="rId1"/><sheet name="Painel gerencial" sheetId="2" r:id="rId2"/></sheets></workbook>',
     'xl/_rels/workbook.xml.rels':'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
     'xl/styles.xml':'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="10"/><name val="Aptos"/><color rgb="FF243447"/></font><font><b/><sz val="11"/><name val="Aptos"/><color rgb="FFFFFFFF"/></font><font><b/><sz val="12"/><name val="Aptos Display"/><color rgb="FF17365D"/></font></fonts><fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F4E78"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEAF1F8"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf xfId="0" fontId="0" fillId="0" borderId="0"/><xf xfId="0" fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"/><xf xfId="0" fontId="2" fillId="3" borderId="0" applyFont="1" applyFill="1"/><xf xfId="0" fontId="0" fillId="3" borderId="0" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>',
     'xl/worksheets/sheet1.xml':sheetXml(detailMatrix,true),
@@ -318,7 +318,7 @@ document.addEventListener('click',async e=>{let del=e.target.closest('[data-dele
       ['Matrícula abastecedor',x=>x.by],
       ['Horário original',x=>x.originalTime||''],
       ['Justificativa horário',x=>x.timeOverrideReason||''],
-      ['Data/hora do registro',x=>x.recordedAt||''],
+      ['Data/hora do registro',x=>x.recordedAt?new Date(x.recordedAt).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'medium'}):''],
       ['Data/hora da correção',x=>x.timeCorrectedAt||''],
       ['Matrícula da correção',x=>x.timeCorrectedBy||'']
     ];
@@ -338,11 +338,29 @@ document.addEventListener('click',async e=>{let del=e.target.closest('[data-dele
     const totalKg=r.rows.reduce((a,x)=>a+Number(x.kg||0),0);
     const avgKg=r.rows.length?totalKg/r.rows.length:0;
     const uniqueIds=new Set(r.rows.map(x=>x.kind==='frota'?'Frota '+(x.frota||''):(x.area||'')+' '+(x.equip||'')));
-    const summaryRows=Array.from({length:16},()=>[]);
+    const summaryRows=Array.from({length:18},()=>[]);
     const put=(row,col,value)=>{while(summaryRows.length<row)summaryRows.push([]);summaryRows[row-1][col-1]=value};
-    put(1,1,'PAINEL GERENCIAL | CONTROLE DE ABASTECIMENTO GLP');put(2,1,'Indicadores do relatório exportado');
-    [['Data do relatório',r.date],['Status',r.checked?'Conferido':'Pendente'],['Total de GLP (kg)',totalKg],['Quantidade de abastecimentos',r.rows.length],['Média por abastecimento (kg)',avgKg],['Identificações distintas',uniqueIds.size],['Registros de frota',r.rows.filter(x=>x.kind==='frota').length],['Registros de outros setores',r.rows.filter(x=>x.kind==='outro').length]].forEach((v,i)=>{put(i+3,1,v[0]);put(i+3,2,v[1])});
+    put(1,1,'PAINEL GERENCIAL | CONTROLE DE ABASTECIMENTO GLP');
+    put(2,1,'Resumo executivo do relatório');
     const group=(arr,keyFn)=>{const sums={};arr.forEach(x=>{const k=String(keyFn(x)||'Não informado');sums[k]=(sums[k]||0)+Number(x.kg||0)});return Object.entries(sums).sort((a,b)=>b[1]-a[1])};
+    const byMachine=group(r.rows,x=>x.kind==='frota'?'Frota '+(x.frota||'Sem identificação'):'Outro setor · '+(x.area||'')+' '+(x.equip||''));
+    const byTeam=group(r.rows,x=>x.team||'Não informada');
+    const byShift=group(r.rows,x=>x.shift||'Não informado');
+    const byOperator=group(r.rows,x=>x.operator||'Não informado');
+    [
+      ['Data do relatório',r.date],
+      ['Status da conferência',r.checked?'Conferido':'Pendente'],
+      ['Consumo total de GLP (kg)',totalKg],
+      ['Quantidade de abastecimentos',r.rows.length],
+      ['Média por abastecimento (kg)',avgKg],
+      ['Máquinas / identificações distintas',uniqueIds.size],
+      ['Registros de frota',r.rows.filter(x=>x.kind==='frota').length],
+      ['Registros de outros setores',r.rows.filter(x=>x.kind==='outro').length],
+      ['Maior consumo por máquina',byMachine[0]?byMachine[0][0]+' · '+num(byMachine[0][1])+' kg':'Sem dados'],
+      ['Equipe com maior consumo',byTeam[0]?byTeam[0][0]+' · '+num(byTeam[0][1])+' kg':'Sem dados'],
+      ['Turno com maior consumo',byShift[0]?byShift[0][0]+' · '+num(byShift[0][1])+' kg':'Sem dados'],
+      ['Operador com maior consumo',byOperator[0]?byOperator[0][0]+' · '+num(byOperator[0][1])+' kg':'Sem dados']
+    ].forEach((v,i)=>{put(i+3,1,v[0]);put(i+3,2,v[1])});
     const groups=[
       {title:'Consumo por frota / identificação',col:1,values:group(r.rows,x=>x.kind==='frota'?'Frota '+(x.frota||'Sem identificação'):'Outro setor · '+(x.area||'')+' '+(x.equip||''))},
       {title:'Consumo por equipe',col:4,values:group(r.rows,x=>x.team||'Não informada')},
